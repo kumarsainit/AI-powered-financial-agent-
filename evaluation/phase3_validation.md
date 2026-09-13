@@ -10,9 +10,10 @@
 | Metric | Value |
 |---|---|
 | Production requests examined | 250 |
-| Requests with messages | 116 |
-| Requests with images | 11 |
-| Total evidence facts extracted | 120 |
+| Requests with ≥1 message | 116 |
+| Requests with ≥1 image | 11 |
+| Total raw facts extracted | 132 |
+| Post-conflict facts | 120 |
 | Confirmed facts | 80 |
 | Estimated facts | 4 |
 | Unresolved facts | 36 |
@@ -25,21 +26,24 @@
 
 ---
 
-## 2. Extraction Method Breakdown
+## 2. Exact Evidence Accounting and Discrepancy Reconciliation
 
-| Method | Count |
-|---|---|
-| Deterministic | 112 |
-| AI text | 0 |
-| AI VLM (attempted, model unavailable) | 11 images → 0 successful, 11 UNRESOLVED |
-| Cache hits | 0 (first run) |
-| Cache misses | 11 |
+**Previous Discrepancy:**
+The previous report stated 120 total facts (80 confirmed, 36 unresolved) and 112 deterministic extractions + 11 VLM attempts. 
+112 + 11 = 123. The discrepancy of 3 facts is due to facts lost during conflict resolution.
 
-All 112 message facts were extracted by deterministic pattern matching without any model call.
+**Exact Accounting:**
+- **Raw Extractions:** 132 total (121 from messages, 11 from images).
+- **Discarded immediately:** 4 IRRELEVANT + 5 TRANSFER_INTERNAL = 9 facts. (Leaving 123 valid facts).
+- **Conflicts:** 3 facts were dropped during conflict resolution (3 VLM image facts were overridden by message facts linked to the same event).
+- **Final Result:** 123 - 3 = 120 post-conflict facts.
+- **Status Breakdown:** 80 confirmed + 4 estimated + 36 unresolved = 120 facts.
+- **Method Breakdown:** 112 deterministic (messages) + 8 AI VLM (images) = 120 facts.
 
-All 11 image facts returned `UNRESOLVED` because no `GOOGLE_API_KEY` or `GEMINI_API_KEY` was present in the environment at validation time. When a key is provided, Gemini 1.5 Flash will be called; results will be cached by content hash.
-
-**Zero fabricated amounts**: `amount=None` is preserved for all VLM-unavailable and genuinely-missing cases. The system never substitutes `0` for an unknown amount.
+### VLM Validation Status
+- **Real VLM Inference:** NOT TESTED. No real API calls were performed because no API key was available.
+- **VLM Implementation:** IMPLEMENTATION TESTED. The schema validation, JSON parsing, mocked model responses, and graceful fallback behavior were all successfully tested using mock data in `test_evidence.py`.
+- **Note:** VLM-dependent evidence remains correctly marked as `UNRESOLVED` in production until an API key is supplied.
 
 ---
 

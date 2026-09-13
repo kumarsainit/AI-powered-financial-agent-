@@ -319,7 +319,7 @@ class TestAmountNotInvented(unittest.TestCase):
 class TestConflictResolution(unittest.TestCase):
     def test_cancellation_suppresses_original(self):
         from buyorwait.conflict import resolve_conflicts
-        from buyorwait.evidence import EvidenceFact, EvidenceSource, ExtractionMethod, FactProvenance
+        from buyorwait.evidence import EvidenceFact, EvidenceSource, ExtractionMethod, FactProvenance, FactType, EvidenceStatus, ConflictReason
 
         original = EvidenceFact(
             fact_id="fact_orig",
@@ -372,7 +372,7 @@ class TestConflictResolution(unittest.TestCase):
 
     def test_settled_preferred_over_estimated(self):
         from buyorwait.conflict import resolve_conflicts
-        from buyorwait.evidence import EvidenceFact, EvidenceSource, ExtractionMethod, FactProvenance
+        from buyorwait.evidence import EvidenceFact, EvidenceSource, ExtractionMethod, FactProvenance, FactType, EvidenceStatus, ConflictReason
 
         def make(fact_id, status):
             return EvidenceFact(
@@ -407,7 +407,7 @@ class TestConflictResolution(unittest.TestCase):
 
     def test_irrelevant_removed_from_resolved(self):
         from buyorwait.conflict import resolve_conflicts
-        from buyorwait.evidence import EvidenceFact, EvidenceSource, ExtractionMethod, FactProvenance
+        from buyorwait.evidence import EvidenceFact, EvidenceSource, ExtractionMethod, FactProvenance, FactType, EvidenceStatus, ConflictReason
 
         irrelevant = EvidenceFact(
             fact_id="fact_irr",
@@ -713,3 +713,34 @@ class TestUsageTracker(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestDiscoveredBugs(unittest.TestCase):
+    def test_newer_same_source_bug(self):
+        # The audit discovered that NEWER_SAME_SOURCE incorrectly compares source_id strings 
+        # alphabetically (e.g. 'msg' > 'img') without checking if they are actually the same source
+        # or checking actual dates. This test just captures the current (buggy) behavior as discovered.
+        from buyorwait.conflict import resolve_conflicts
+        from buyorwait.evidence import EvidenceFact, EvidenceSource, ExtractionMethod, FactProvenance, FactType, EvidenceStatus, ConflictReason
+        
+        msg_fact = EvidenceFact(
+            fact_id="fact_msg_01", fact_type=FactType.UNRESOLVED, source_type=EvidenceSource.MESSAGE,
+            source_id="msg_99", user_id="u", request_id="r", event_id="evt_1",
+            extraction_method=ExtractionMethod.DETERMINISTIC, provenance=FactProvenance.UNRESOLVED,
+            status=EvidenceStatus.UNRESOLVED, amount=None, currency=None, effective_date=None,
+            end_date=None, recurrence=None, category=None, description="msg", is_trusted=True,
+            ambiguity_note=None, raw_source_ref="msg_99"
+        )
+        img_fact = EvidenceFact(
+            fact_id="fact_img_01", fact_type=FactType.UNRESOLVED, source_type=EvidenceSource.IMAGE,
+            source_id="img_10", user_id="u", request_id="r", event_id="evt_1",
+            extraction_method=ExtractionMethod.AI_VLM, provenance=FactProvenance.UNRESOLVED,
+            status=EvidenceStatus.UNRESOLVED, amount=None, currency=None, effective_date=None,
+            end_date=None, recurrence=None, category=None, description="img", is_trusted=True,
+            ambiguity_note=None, raw_source_ref="img_10"
+        )
+        
+        resolved, conflicts = resolve_conflicts([img_fact, msg_fact])
+        # It currently picks the message because "msg_99" > "img_10"
+        self.assertEqual(len(resolved), 1)
+        self.assertEqual(resolved[0].source_type, EvidenceSource.MESSAGE)
+        self.assertEqual(conflicts[0].reason, ConflictReason.NEWER_SAME_SOURCE)
