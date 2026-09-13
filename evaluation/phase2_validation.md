@@ -66,21 +66,56 @@ No downstream module (lifecycle, recurrence, spending history, spending change, 
 
 ## 4. Lifecycle Normalization Results
 
-Computed by resolving every production user's full event history (via `LifecycleChain`s built while constructing all 250 request bundles):
+Computed by resolving every production user's full event history (via `LifecycleChain`s built while constructing all 250 request bundles). An earlier version of this section reported only a per-**chain** count per pattern; because 7 of the 8 patterns are 2-member chains, summing those chain counts as if they were event counts undercounts the true event total by exactly the chain-member multiplier. Corrected below with both views and an explicit event-level reconciliation (see the audit note at the end of this section).
 
-| Pattern | Chains found |
+| Pattern | Chains found | Members per chain | Events accounted for |
+|---|---|---|---|
+| `standalone` | 22,950 | 1 | 22,950 |
+| `refund_settled` | 12 | 2 | 24 |
+| `refund_pending` | 7 | 2 | 14 |
+| `cancelled_authorization` | 7 | 2 | 14 |
+| `failed_retry` | 7 | 2 | 14 |
+| `possible_duplicate` | 6 | 2 | 12 |
+| `unrealized_valuation` | 8 | 2 | 16 |
+| `realized_sale` | 5 | 2 | 10 |
+| `unclassified_link` | 0 | — | 0 |
+| **Total** | **23,002 chains** | — | **23,054 events** |
+
+### Exact reconciliation
+
+| Quantity | Count |
 |---|---|
-| `standalone` | 22,950 |
-| `refund_settled` | 12 |
-| `refund_pending` | 7 |
-| `cancelled_authorization` | 7 |
-| `failed_retry` | 7 |
-| `possible_duplicate` | 6 |
-| `unrealized_valuation` | 8 |
-| `realized_sale` | 5 |
-| `unclassified_link` | **0** |
+| Total input events (production scope) | 23,054 |
+| Events in a linked (non-standalone) chain | 104 (= 52 chains × 2 members) |
+| Standalone events | 22,950 |
+| Events classified into a known lifecycle pattern (refund_settled/refund_pending/cancelled_authorization/failed_retry/possible_duplicate/unrealized_valuation/realized_sale) | 104 |
+| Events classified as `unclassified_link` | 0 |
+| Events with no lifecycle classification at all | **0** |
+| Included events (`disposition = include`) | 23,019 |
+| Excluded events, total | 35 |
+| — `exclude_superseded` | 20 |
+| — `exclude_pending_credit` | 7 |
+| — `exclude_noncash` | 8 |
+| Unique event IDs seen across all chains | 23,054 (no ID appears in more than one chain) |
+| Duplicate event-ID appearances across chains | 0 |
 
-Member disposition totals: `include` 23,019, `exclude_superseded` 20, `exclude_pending_credit` 7, `exclude_noncash` 8 (23,054 events total). Zero chains fell into the `unclassified_link` fallback on the production dataset — every linked pair observed matches one of the 7 patterns identified in Phase 1's forensic analysis (Section D.3). The `possible_duplicate` pattern (6 cases) is the one that actively overrides a status-only rule — each of these is a `pending` debit that would otherwise be reserved as a real future obligation, but is excluded here because it is linked to an already-`settled` original charge.
+`22,950 + 24 + 14 + 14 + 14 + 12 + 16 + 10 = 23,054` (event view) and `23,019 + 20 + 7 + 8 = 23,054` (disposition view) both reconcile exactly against the 23,054 production events; both always did — only the chain-count table's column label was ambiguous. Verified programmatically by resolving lifecycle chains per user across the full production dataset (not sampled) and tracking every `event_id` into a single set: the set's size equals 23,054 with zero duplicate insertions and zero events left unvisited.
+
+### Verification checklist
+
+- **A — no 3+ node chains:** confirmed. Chain size distribution across the full production dataset is `{1: 22950, 2: 52}` — no chain of size 3 or more exists.
+- **B — every linked event references a valid event:** confirmed. `ingestion.py`'s `_validate_relationships` already rejects a dangling `linked_event_id` at load time (see `tests/test_ingestion.py::test_unresolvable_linked_event_id_fails_clearly`); an independent re-check found 0 dangling references among the 23,054 production events.
+- **C — no event is accidentally counted twice:** confirmed. Every event belongs to exactly one `LifecycleChain` (connected-component resolution visits each `event_id` once); 23,054 unique IDs observed, 0 duplicate appearances.
+- **D — no event is silently dropped:** confirmed. 0 events have no lifecycle classification; every event is either `standalone` or a member of exactly one pattern chain.
+- **E — a refund does not remove the original expense when both records carry real economic effect:** confirmed for `refund_settled` — both the refund and the original settled expense are `include` (12 chains × 2 = 24 events), since a settled refund on a later date is a second, real cash movement, not a correction of the first.
+- **F — a cancelled authorization does not affect available balance:** confirmed — in every `cancelled_authorization` chain, the cancelled leg is `exclude_superseded` (7/7).
+- **G — failed transactions do not affect available balance:** confirmed — in every `failed_retry` chain, the failed leg is `exclude_superseded` (7/7); a failed event's own `status` also excludes it independently at the general status-filtering level used elsewhere in this phase.
+- **H — failed→retry chains do not double-count the failed attempt:** confirmed — only the `scheduled` retry is `include`; the `failed` leg is `exclude_superseded` in all 7 chains.
+- **I — `possible_duplicate` handling does not delete the legitimate charge:** confirmed — in all 6 chains, the **target** (the original, already-`settled` charge) is `include`; the **source** (the later `pending` duplicate) is the one marked `exclude_superseded`.
+- **J — unrealized investment valuation never becomes spendable cash:** confirmed — the valuation leg is `exclude_noncash` in all 8 `unrealized_valuation` chains.
+- **K — realized investment sale is handled per the challenge rules:** confirmed — both the sale and the original purchase are `include` in all 5 `realized_sale` chains, i.e. both are preserved as real, distinct historical cash movements (money out at purchase, money in at sale) rather than netted or dropped; neither is treated as unrealized or as predicting future asset prices.
+
+Zero chains fell into the `unclassified_link` fallback on the production dataset — every linked pair observed matches one of the 7 patterns identified in Phase 1's forensic analysis (Section D.3). The `possible_duplicate` pattern (6 cases) is the one that actively overrides a status-only rule — each of these is a `pending` debit that would otherwise be reserved as a real future obligation, but is excluded here because it is linked to an already-`settled` original charge.
 
 ---
 
