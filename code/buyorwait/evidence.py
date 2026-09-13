@@ -99,6 +99,7 @@ class EvidenceFact:
     is_trusted: bool
     ambiguity_note: str | None
     raw_source_ref: str
+    created_at: datetime | None = None
 
 
 @dataclass(frozen=True)

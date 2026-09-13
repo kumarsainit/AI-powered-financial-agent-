@@ -13,10 +13,10 @@
 | Requests with ≥1 message | 116 |
 | Requests with ≥1 image | 11 |
 | Total raw facts extracted | 132 |
-| Post-conflict facts | 120 |
+| Post-conflict facts | 122 |
 | Confirmed facts | 80 |
 | Estimated facts | 4 |
-| Unresolved facts | 36 |
+| Unresolved facts | 38 |
 | Conflicts detected | 3 |
 | Requests with untrusted content | 0 (phishing fact classified IRRELEVANT) |
 | Phase 2 tests | 78 passed |
@@ -35,10 +35,10 @@ The previous report stated 120 total facts (80 confirmed, 36 unresolved) and 112
 **Exact Accounting:**
 - **Raw Extractions:** 132 total (121 from messages, 11 from images).
 - **Discarded immediately:** 4 IRRELEVANT + 5 TRANSFER_INTERNAL = 9 facts. (Leaving 123 valid facts).
-- **Conflicts:** 3 facts were dropped during conflict resolution (3 VLM image facts were overridden by message facts linked to the same event).
-- **Final Result:** 123 - 3 = 120 post-conflict facts.
-- **Status Breakdown:** 80 confirmed + 4 estimated + 36 unresolved = 120 facts.
-- **Method Breakdown:** 112 deterministic (messages) + 8 AI VLM (images) = 120 facts.
+- **Conflicts:** 1 fact was dropped during conflict resolution (SETTLED_OVER_ESTIMATE) (3 VLM image facts were overridden by message facts linked to the same event).
+- **Final Result:** 123 - 1 = 122 post-conflict facts.
+- **Status Breakdown:** 80 confirmed + 4 estimated + 38 unresolved = 122 facts.
+- **Method Breakdown:** 112 deterministic (messages) + 10 AI VLM (images) = 122 facts.
 
 ### VLM Validation Status
 - **Real VLM Inference:** NOT TESTED. No real API calls were performed because no API key was available.
@@ -46,6 +46,13 @@ The previous report stated 120 total facts (80 confirmed, 36 unresolved) and 112
 - **Note:** VLM-dependent evidence remains correctly marked as `UNRESOLVED` in production until an API key is supplied.
 
 ---
+
+
+### Bug Fix: Conflict Resolution (`NEWER_SAME_SOURCE`)
+- **Discovery**: A conflict-resolution bug was discovered where `NEWER_SAME_SOURCE` incorrectly compared `source_id` alphabetically (e.g. `msg_99` > `img_10`) and applied to facts from different source types. The previous regression test had been asserting this buggy behavior.
+- **Correction**: The logic was corrected to strictly group by `source_type` and compare valid temporal metadata (`created_at`). For facts originating from different sources (or lacking temporal metadata), the conflict correctly remains unresolved.
+- **Result**: The previous regression test was replaced. The corrected implementation was tested and full 250-request determinism was maintained. Two facts that were improperly discarded are now correctly preserved as `UNRESOLVED`.
+
 
 ## 3. Fact Type Distribution
 

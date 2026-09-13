@@ -714,33 +714,81 @@ class TestUsageTracker(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
-class TestDiscoveredBugs(unittest.TestCase):
-    def test_newer_same_source_bug(self):
-        # The audit discovered that NEWER_SAME_SOURCE incorrectly compares source_id strings 
-        # alphabetically (e.g. 'msg' > 'img') without checking if they are actually the same source
-        # or checking actual dates. This test just captures the current (buggy) behavior as discovered.
+
+
+class TestNewerSameSourceFix(unittest.TestCase):
+    def test_different_source_types(self):
         from buyorwait.conflict import resolve_conflicts
-        from buyorwait.evidence import EvidenceFact, EvidenceSource, ExtractionMethod, FactProvenance, FactType, EvidenceStatus, ConflictReason
+        from buyorwait.evidence import EvidenceFact, EvidenceSource, ExtractionMethod, FactProvenance, FactType, EvidenceStatus
+        from datetime import datetime
         
         msg_fact = EvidenceFact(
-            fact_id="fact_msg_01", fact_type=FactType.UNRESOLVED, source_type=EvidenceSource.MESSAGE,
+            fact_id="fact_msg", fact_type=FactType.UNRESOLVED, source_type=EvidenceSource.MESSAGE,
             source_id="msg_99", user_id="u", request_id="r", event_id="evt_1",
             extraction_method=ExtractionMethod.DETERMINISTIC, provenance=FactProvenance.UNRESOLVED,
             status=EvidenceStatus.UNRESOLVED, amount=None, currency=None, effective_date=None,
             end_date=None, recurrence=None, category=None, description="msg", is_trusted=True,
-            ambiguity_note=None, raw_source_ref="msg_99"
+            ambiguity_note=None, raw_source_ref="msg_99", created_at=datetime(2026, 1, 1)
         )
         img_fact = EvidenceFact(
-            fact_id="fact_img_01", fact_type=FactType.UNRESOLVED, source_type=EvidenceSource.IMAGE,
+            fact_id="fact_img", fact_type=FactType.UNRESOLVED, source_type=EvidenceSource.IMAGE,
             source_id="img_10", user_id="u", request_id="r", event_id="evt_1",
             extraction_method=ExtractionMethod.AI_VLM, provenance=FactProvenance.UNRESOLVED,
             status=EvidenceStatus.UNRESOLVED, amount=None, currency=None, effective_date=None,
             end_date=None, recurrence=None, category=None, description="img", is_trusted=True,
-            ambiguity_note=None, raw_source_ref="img_10"
+            ambiguity_note=None, raw_source_ref="img_10", created_at=datetime(2026, 1, 2)
         )
-        
         resolved, conflicts = resolve_conflicts([img_fact, msg_fact])
-        # It currently picks the message because "msg_99" > "img_10"
+        self.assertEqual(len(resolved), 2, "Different sources should not resolve via NEWER_SAME_SOURCE")
+        self.assertFalse(conflicts[0].resolved)
+        
+    def test_same_source_with_metadata(self):
+        from buyorwait.conflict import resolve_conflicts
+        from buyorwait.evidence import EvidenceFact, EvidenceSource, ExtractionMethod, FactProvenance, FactType, EvidenceStatus, ConflictReason
+        from datetime import datetime
+        
+        msg1 = EvidenceFact(
+            fact_id="msg1", fact_type=FactType.UNRESOLVED, source_type=EvidenceSource.MESSAGE,
+            source_id="m1", user_id="u", request_id="r", event_id="evt_1",
+            extraction_method=ExtractionMethod.DETERMINISTIC, provenance=FactProvenance.UNRESOLVED,
+            status=EvidenceStatus.UNRESOLVED, amount=None, currency=None, effective_date=None,
+            end_date=None, recurrence=None, category=None, description="m1", is_trusted=True,
+            ambiguity_note=None, raw_source_ref="m1", created_at=datetime(2026, 1, 1)
+        )
+        msg2 = EvidenceFact(
+            fact_id="msg2", fact_type=FactType.UNRESOLVED, source_type=EvidenceSource.MESSAGE,
+            source_id="m2", user_id="u", request_id="r", event_id="evt_1",
+            extraction_method=ExtractionMethod.DETERMINISTIC, provenance=FactProvenance.UNRESOLVED,
+            status=EvidenceStatus.UNRESOLVED, amount=None, currency=None, effective_date=None,
+            end_date=None, recurrence=None, category=None, description="m2", is_trusted=True,
+            ambiguity_note=None, raw_source_ref="m2", created_at=datetime(2026, 1, 2)
+        )
+        resolved, conflicts = resolve_conflicts([msg1, msg2])
         self.assertEqual(len(resolved), 1)
-        self.assertEqual(resolved[0].source_type, EvidenceSource.MESSAGE)
+        self.assertEqual(resolved[0].fact_id, "msg2")
+        self.assertTrue(conflicts[0].resolved)
         self.assertEqual(conflicts[0].reason, ConflictReason.NEWER_SAME_SOURCE)
+
+    def test_same_source_missing_metadata(self):
+        from buyorwait.conflict import resolve_conflicts
+        from buyorwait.evidence import EvidenceFact, EvidenceSource, ExtractionMethod, FactProvenance, FactType, EvidenceStatus
+        
+        img1 = EvidenceFact(
+            fact_id="img1", fact_type=FactType.UNRESOLVED, source_type=EvidenceSource.IMAGE,
+            source_id="i1", user_id="u", request_id="r", event_id="evt_1",
+            extraction_method=ExtractionMethod.AI_VLM, provenance=FactProvenance.UNRESOLVED,
+            status=EvidenceStatus.UNRESOLVED, amount=None, currency=None, effective_date=None,
+            end_date=None, recurrence=None, category=None, description="i1", is_trusted=True,
+            ambiguity_note=None, raw_source_ref="i1", created_at=None
+        )
+        img2 = EvidenceFact(
+            fact_id="img2", fact_type=FactType.UNRESOLVED, source_type=EvidenceSource.IMAGE,
+            source_id="i2", user_id="u", request_id="r", event_id="evt_1",
+            extraction_method=ExtractionMethod.AI_VLM, provenance=FactProvenance.UNRESOLVED,
+            status=EvidenceStatus.UNRESOLVED, amount=None, currency=None, effective_date=None,
+            end_date=None, recurrence=None, category=None, description="i2", is_trusted=True,
+            ambiguity_note=None, raw_source_ref="i2", created_at=None
+        )
+        resolved, conflicts = resolve_conflicts([img1, img2])
+        self.assertEqual(len(resolved), 2, "Should remain unresolved if missing temporal metadata")
+        self.assertFalse(conflicts[0].resolved)

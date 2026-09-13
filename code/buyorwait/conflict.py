@@ -90,18 +90,46 @@ def resolve_conflicts(facts: list[EvidenceFact]) -> tuple[list[EvidenceFact], li
             continue
 
         if len(group) > 1:
-            newest = max(group, key=lambda f: (f.source_id, f.fact_id))
-            for loser in group:
-                if loser is not newest:
-                    conflicts.append(ConflictRecord(
-                        fact_a=newest,
-                        fact_b=loser,
-                        resolved=True,
-                        selected_fact_id=newest.fact_id,
-                        reason=ConflictReason.NEWER_SAME_SOURCE,
-                        note=f"Newest fact selected for event {event_id}.",
-                    ))
-            final.append(newest)
+            from collections import defaultdict
+            source_groups = defaultdict(list)
+            for f in group:
+                source_groups[f.source_type.value].append(f)
+            
+            survivors = []
+            for stype, sgroup in source_groups.items():
+                if len(sgroup) == 1:
+                    survivors.append(sgroup[0])
+                else:
+                    if all(f.created_at is not None for f in sgroup):
+                        newest = max(sgroup, key=lambda f: f.created_at)
+                        for loser in sgroup:
+                            if loser is not newest:
+                                conflicts.append(ConflictRecord(
+                                    fact_a=newest,
+                                    fact_b=loser,
+                                    resolved=True,
+                                    selected_fact_id=newest.fact_id,
+                                    reason=ConflictReason.NEWER_SAME_SOURCE,
+                                    note=f"Newest fact selected from source {stype} for event {event_id}.",
+                                ))
+                        survivors.append(newest)
+                    else:
+                        survivors.extend(sgroup)
+            
+            if len(survivors) == 1:
+                final.append(survivors[0])
+            else:
+                for i in range(len(survivors)):
+                    for j in range(i + 1, len(survivors)):
+                        conflicts.append(ConflictRecord(
+                            fact_a=survivors[i],
+                            fact_b=survivors[j],
+                            resolved=False,
+                            selected_fact_id=None,
+                            reason=None,
+                            note=f"Unresolved conflict: facts from different sources or lacking temporal metadata for event {event_id}.",
+                        ))
+                final.extend(survivors)
             continue
 
         final.extend(group)

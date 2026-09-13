@@ -280,7 +280,7 @@ def extract_message_facts(
             description="Message flagged as phishing/unsupported solicitation; excluded from financial state.",
             is_trusted=False,
             ambiguity_note="Contains phishing patterns: pay-to-receive, prize claims with payment demands.",
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -305,7 +305,7 @@ def extract_message_facts(
             description="Message describes unrealized/displayed investment value — not spendable cash; excluded.",
             is_trusted=True,
             ambiguity_note=None,
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -330,7 +330,7 @@ def extract_message_facts(
             description="Matching debit+credit from internal account transfer — net cash effect is zero.",
             is_trusted=True,
             ambiguity_note=None,
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -355,7 +355,7 @@ def extract_message_facts(
             description="Prize claim reported as pending/processing — must NOT be counted as cash until settled.",
             is_trusted=True,
             ambiguity_note="Prize pending; do not treat as available income per challenge rules.",
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -380,7 +380,7 @@ def extract_message_facts(
             description="Extra card charge is under investigation — treat as unresolved pending debit.",
             is_trusted=True,
             ambiguity_note="Outcome unknown; conservatively reserve funds until resolved.",
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -406,7 +406,7 @@ def extract_message_facts(
             description="Previous debit attempt failed; a retry is expected — reserve the debit amount.",
             is_trusted=True,
             ambiguity_note=None,
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -432,7 +432,7 @@ def extract_message_facts(
             description="Refund initiated but not yet credited — do not count as available cash.",
             is_trusted=True,
             ambiguity_note="Pending credit; excluded until settled per challenge rules.",
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -457,7 +457,7 @@ def extract_message_facts(
             description="Foreign-currency refund is still processing — exclude until credited.",
             is_trusted=True,
             ambiguity_note=None,
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -490,7 +490,7 @@ def extract_message_facts(
             description="Income stream terminated; do not project this salary beyond the termination date.",
             is_trusted=True,
             ambiguity_note=remaining_note,
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -517,7 +517,7 @@ def extract_message_facts(
             description=f"Salary raise to {amount} {currency} effective {effective_date}.",
             is_trusted=True,
             ambiguity_note=None if amount else "Amount not found in message text.",
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -544,7 +544,7 @@ def extract_message_facts(
             description=f"Temporary salary reduction to {amount} {currency}.",
             is_trusted=True,
             ambiguity_note=None if amount else "Amount not found; treat as unresolved.",
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -571,7 +571,7 @@ def extract_message_facts(
             description=f"First salary from new employer: {amount} {currency} on {effective_date}.",
             is_trusted=True,
             ambiguity_note=None if amount else "Amount not found.",
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -599,7 +599,7 @@ def extract_message_facts(
             description=f"Regular salary resumes: {amount} {currency} from {effective_date}.",
             is_trusted=True,
             ambiguity_note=None,
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         if new_recurring:
             facts.append(EvidenceFact(
@@ -622,7 +622,7 @@ def extract_message_facts(
                 description="New recurring childcare payment announced — amount not stated; cannot be invented.",
                 is_trusted=True,
                 ambiguity_note="UNRESOLVED: amount explicitly missing; do not assume zero or any value.",
-                raw_source_ref=mid,
+                raw_source_ref=mid, created_at=message.sent_at,
             ))
         return facts
 
@@ -647,7 +647,7 @@ def extract_message_facts(
             description="Quarterly bonus is pending final performance review — amount and date unconfirmed; do not count.",
             is_trusted=True,
             ambiguity_note="Do not include as income until settled.",
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -674,7 +674,7 @@ def extract_message_facts(
             description=f"Salary payment date shifted; next credit expected on {effective_date}.",
             is_trusted=True,
             ambiguity_note=None,
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -701,7 +701,7 @@ def extract_message_facts(
             description=f"Confirmed salary: {amount} {currency} on {effective_date}.",
             is_trusted=True,
             ambiguity_note=None,
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -730,7 +730,7 @@ def extract_message_facts(
             description=f"Lease renewed with {pct or 'unknown'}% rent increase to {amount} {currency} from {effective_date}.",
             is_trusted=True,
             ambiguity_note=None if amount else "New amount not explicitly stated.",
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -757,7 +757,7 @@ def extract_message_facts(
             description=f"Client approved invoice payment of {amount} {currency}, expected on {effective_date}.",
             is_trusted=True,
             ambiguity_note="Not yet credited; treat as pending income until settled.",
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -785,7 +785,7 @@ def extract_message_facts(
             description="Investment sale proceeds settled to cash account.",
             is_trusted=True,
             ambiguity_note=None,
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -811,7 +811,7 @@ def extract_message_facts(
             description="Refund confirmed/settled to account.",
             is_trusted=True,
             ambiguity_note=None,
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -836,7 +836,7 @@ def extract_message_facts(
             description="Refund processed (Bahasa Indonesia) but not yet credited; do not count as cash.",
             is_trusted=True,
             ambiguity_note=None,
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -861,7 +861,7 @@ def extract_message_facts(
             description="Internal account transfer (Bahasa Indonesia) — net cash effect zero.",
             is_trusted=True,
             ambiguity_note=None,
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -887,7 +887,7 @@ def extract_message_facts(
             description="Minimum card payment(s) due — reserve as upcoming debit.",
             is_trusted=True,
             ambiguity_note="Multiple cards may be involved.",
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -912,7 +912,7 @@ def extract_message_facts(
             description="Gig/freelance payout still pending — do not count until credited.",
             is_trusted=True,
             ambiguity_note="Pending income; treat as unresolved.",
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -938,7 +938,7 @@ def extract_message_facts(
             description="Employer reimbursement credit — pending until settled.",
             is_trusted=True,
             ambiguity_note="Not yet credited.",
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -971,7 +971,7 @@ def extract_message_facts(
             description=f"Confirmed regular salary for next payroll: {amount} {currency}.",
             is_trusted=True,
             ambiguity_note=None if amount else "Amount not extracted.",
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -996,7 +996,7 @@ def extract_message_facts(
             description="Foreign currency charge/refund pending (Bahasa Indonesia) — home currency amount TBD.",
             is_trusted=True,
             ambiguity_note=None,
-            raw_source_ref=mid,
+            raw_source_ref=mid, created_at=message.sent_at,
         ))
         return facts
 
@@ -1020,5 +1020,5 @@ def extract_message_facts(
         description="Message not matched by any deterministic pattern; requires AI extraction or manual review.",
         is_trusted=_SOURCE_TRUST_MAP.get(src, False),
         ambiguity_note="Unmatched message pattern.",
-        raw_source_ref=mid,
+        raw_source_ref=mid, created_at=message.sent_at,
     )]
