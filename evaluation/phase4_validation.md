@@ -368,3 +368,14 @@ Full 250-request reconstruct-project-simulate-validate pass: **~0.9 s** on one C
 2. The 11 image-evidence facts remain unresolved because no VLM key is available; they stay unresolved obligations and never become cash.
 3. `charge_disputed` facts assume no cash relief. If a dispute resolves in the user's favour the forecast understates cash — the safe direction.
 4. The starting balance trusts `current_available_balance` as the as-of-`request_date` cash position. This is stated as an assumption, not derived.
+
+---
+
+## 15. Phase 5 Amendment — Two Calibration-Driven Corrections
+
+Phase 5 ran the completed decision engine against the 25 public `sample_requests.csv` rows (development calibration only; those users never enter production). Two Phase 4 choices were measurably wrong against those labelled outcomes and were corrected:
+
+1. **Safety is evaluated on daily closing balances, not the intraday low.** The original debits-before-credits intraday low made a payment on payday unsafe, pushing the earliest safe date one day (or one month) past every ground-truth date. Closing-balance semantics also satisfy the Phase 4 requirement that same-day ordering must not change financial safety. Same-day ordering is now credits-first and is reporting-only. Exact-date matches against the samples rose from 8/25 to 12/25.
+2. **Essential variable spending is forecast at `median`, not `percentile_75`.** The cumulative backtest favoured `percentile_75` for its lower under-estimation rate, but end-to-end against the labelled samples `median` scored better on every axis (status 17/25 vs 16/25, method 19/25 vs 18/25, dates 14/25 vs 12/25). Labelled outcomes outrank a proxy metric, so `median` is the production default; `percentile_75` remains one config value away.
+
+Restated Phase 4 figures under the corrected semantics: minimum projected balance median 55,499.30 (was 53,226.09 under intraday lows), safety margin median 14,848.08, and requests whose baseline forecast breaches the minimum balance **7** (was 10). Requests processed 250/250, errors 0, repeatability mismatches 0, invariants all passing. Every other figure in this document is unchanged.

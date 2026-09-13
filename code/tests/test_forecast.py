@@ -467,7 +467,7 @@ def test_variable_spending_uses_the_configured_statistic():
     events = monthly_series("g", "groceries", amounts)
     forecast = build_financial_state(bundle(events))
     projected = [e for e in forecast.events if e.category == "groceries"]
-    expected = estimate_amount([Decimal(a) for a in amounts], AmountStatistic.PERCENTILE_75, 3)
+    expected = estimate_amount([Decimal(a) for a in amounts], AmountStatistic.MEDIAN, 3)
     assert projected[0].original_amount == expected
 
 
@@ -584,7 +584,7 @@ def test_income_termination_stops_projected_salary():
     assert salary_dates == [date(2025, 8, 5)]
 
 
-def test_same_day_events_apply_debits_before_credits():
+def test_same_day_ordering_is_credits_first_and_safety_is_ordering_independent():
     events = (
         event(
             "inc",
@@ -599,9 +599,10 @@ def test_same_day_events_apply_debits_before_credits():
     )
     forecast = build_financial_state(bundle(events))
     day = next(state for state in forecast.daily_states if state.when == date(2025, 8, 10))
-    assert day.applied_event_ids[0].endswith("exp")
-    assert day.intraday_low_balance == Decimal("9600")
+    assert day.applied_event_ids[0].endswith("inc")
     assert day.closing_balance == Decimal("10100")
+    assert day.margin_to_minimum == day.closing_balance - Decimal("1000")
+    assert not day.breaches_minimum
 
 
 def test_ninety_day_boundary_is_inclusive_and_bounded():

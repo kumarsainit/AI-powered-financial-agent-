@@ -140,7 +140,7 @@ def build_financial_state(
         if event.direction is Direction.DEBIT and event.spending_class is SpendingClass.FLEXIBLE
     )
 
-    minimum_state = min(daily_states, key=lambda state: (state.intraday_low_balance, state.day_index))
+    minimum_state = min(daily_states, key=lambda state: (state.closing_balance, state.day_index))
     deficit_dates = tuple(state.when for state in daily_states if state.breaches_minimum)
 
     forecast = FinancialStateForecast(
@@ -153,13 +153,13 @@ def build_financial_state(
         excluded=tuple(excluded),
         unresolved_obligations=tuple(unresolved),
         daily_states=daily_states,
-        minimum_projected_balance=minimum_state.intraday_low_balance,
+        minimum_projected_balance=minimum_state.closing_balance,
         minimum_projected_balance_date=minimum_state.when,
         ending_balance=daily_states[-1].closing_balance,
         cumulative_future_income=Decimal(cumulative_income),
         cumulative_future_essential_expense=Decimal(cumulative_essential),
         cumulative_future_flexible_expense=Decimal(cumulative_flexible),
-        safety_margin=minimum_state.intraday_low_balance - profile.minimum_balance_to_keep,
+        safety_margin=minimum_state.closing_balance - profile.minimum_balance_to_keep,
         breaches_minimum=bool(deficit_dates),
         deficit_dates=deficit_dates,
         has_unresolved_conversion=has_unresolved_conversion,

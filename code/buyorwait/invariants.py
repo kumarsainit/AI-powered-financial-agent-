@@ -59,7 +59,7 @@ def check_forecast_invariants(forecast: FinancialStateForecast) -> None:
     if forecast.daily_states[-1].when != window.end_date:
         raise InvariantViolation(f"{forecast.request_id}: last daily state is not the horizon end")
 
-    computed_minimum = min(state.intraday_low_balance for state in forecast.daily_states)
+    computed_minimum = min(state.closing_balance for state in forecast.daily_states)
     if computed_minimum != forecast.minimum_projected_balance:
         raise InvariantViolation(f"{forecast.request_id}: minimum projected balance is inconsistent")
 

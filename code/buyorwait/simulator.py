@@ -13,7 +13,7 @@ from .financial_state import (
     SpendingClass,
 )
 
-_DIRECTION_ORDER = {Direction.DEBIT: 0, Direction.CREDIT: 1, Direction.NON_CASH: 2}
+_DIRECTION_ORDER = {Direction.CREDIT: 0, Direction.DEBIT: 1, Direction.NON_CASH: 2}
 
 
 def ordering_key(event: ProjectedCashFlowEvent) -> tuple:
@@ -76,8 +76,8 @@ def simulate(
                 flexible_expense_applied=flexible,
                 closing_balance=balance,
                 intraday_low_balance=low,
-                margin_to_minimum=low - minimum_balance,
-                breaches_minimum=low < minimum_balance,
+                margin_to_minimum=balance - minimum_balance,
+                breaches_minimum=balance < minimum_balance,
                 applied_event_ids=tuple(applied_ids),
             )
         )

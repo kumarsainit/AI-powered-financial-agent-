@@ -12,7 +12,7 @@ class ForecastConfig:
     recurrence: RecurrenceDetectorConfig = RecurrenceDetectorConfig()
     recent_window: int = 3
     fixed_expense_statistic: AmountStatistic = AmountStatistic.MEDIAN
-    variable_essential_expense_statistic: AmountStatistic = AmountStatistic.PERCENTILE_75
+    variable_essential_expense_statistic: AmountStatistic = AmountStatistic.MEDIAN
     flexible_expense_statistic: AmountStatistic = AmountStatistic.TRIMMED_MEAN
     income_statistic: AmountStatistic = AmountStatistic.PERCENTILE_25
     project_weak_expenses: bool = True
