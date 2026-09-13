@@ -153,3 +153,152 @@ These are requirements, not an implementation:
 4. Should `sample_requests.csv`'s 25 users/rows be loaded into the production run at all, given they need no prediction and are format examples only?
 5. When `requested_amount` doesn't divide evenly at the currency's minor unit, what is the exact rounding rule for `partial_payment`'s two amounts (spec only requires they "add up to `requested_amount`")?
 6. How exactly should "forecast essential variable spending conservatively" be operationalized for protected-but-variable categories (groceries, transport) — historical average, historical max, or most recent observed value? The spec states the principle, not the formula.
+
+---
+
+## I. Resolved Dataset Ambiguities
+
+Each of the six open questions from Section H, investigated against `problem_statement.md`, `README.md`, `AGENTS.md`, and the full dataset. No new rules are invented here — every conclusion is either quoted from a spec file, derived by direct computation over the CSVs, or explicitly marked unresolved.
+
+### Question 1 — What does `minimum_allowed_amount` govern?
+
+**Question:** Is `minimum_allowed_amount` on reducible/stoppable events the floor for `reduce_to`'s `new_amount`, or something else?
+
+**Evidence:**
+- The string `minimum_allowed_amount` does not appear anywhere in `problem_statement.md`, `README.md`, or `AGENTS.md` — it is a dataset-schema-only field.
+- It is populated on **exactly** 2,682 `reducible` rows + 225 `reducible_or_stoppable` rows = **2,907**, matching the total non-blank count with zero exceptions in either direction. It is never populated on `fixed` or pure `stoppable` rows.
+- For every one of the 349 (user, category) groups that have a value, the value is **perfectly constant** across all of that user's rows in that category (0 groups vary).
+- It never exceeds the row's own `amount` (0 of 2,907 violations).
+- Both real `reduce_to` examples in `sample_requests.csv` confirm it exactly: `request_11` → `event_989` (`new_amount=665950`, `minimum_allowed_amount=665950`) and `request_21` → `event_1816` (`new_amount=23.50`, `minimum_allowed_amount=23.5`) — not merely `≥`, but **exactly equal**.
+
+**Conclusion:** `minimum_allowed_amount` is the floor below which a `reducible`/`reducible_or_stoppable` event's spend cannot be cut. A valid `reduce_to:<event_id>:<new_amount>` must satisfy `new_amount ≥ minimum_allowed_amount`, and — per both worked examples, together with the ranking rule "minimize total amount paid" — the correct value to propose when a reduction is used at all is the floor itself (`new_amount == minimum_allowed_amount`).
+
+**Confidence:** High. Explicitly specified by the challenge? No. Derivable from the dataset? Yes — four independent structural facts converge on the same answer, and it is confirmed exactly (not just consistently) against both available ground-truth examples. Competing interpretations (e.g. "smallest historical amount ever charged," "a display-only hint unrelated to `reduce_to`") are ruled out because the value is a fixed per-(user, category) constant rather than derived from the amount history, and the exact-equality match against two independent ground-truth rows is not plausible by coincidence.
+
+**Implementation consequence:** Clamp/validate `reduce_to`'s `new_amount` against `minimum_allowed_amount`; when a reduction is chosen, default to the floor value.
+
+**Hidden-test risk:** High if ignored — a `new_amount` below the true floor fails validity; a partial reduction that stops short of the floor while a cheaper eligible plan exists fails the "minimize total paid" ranking rule.
+
+---
+
+### Question 2 — What counts as "recurrence... supported by history"?
+
+**Question:** What minimum evidence counts as recurrence being "supported by history" (`AGENTS.md` §6.3) — how many same-category occurrences, at what interval consistency, are required before a pattern may be extrapolated?
+
+**Evidence:**
+- `AGENTS.md` line 210 is the only textual source: "Detect recurrence only when history supports it." No count or interval tolerance is given anywhere.
+- Category and `event_type` are a near-perfect structural proxy for "this kind of thing recurs": every category maps essentially 1:1 to one `event_type` (rent/utilities/insurance/education/housing/healthcare/entertainment/family_support/shopping/dining/groceries/transport → `expense`; cloud_storage/streaming/music_subscription/gym/delivery_membership → `subscription`; debt_repayment → `debt_payment`; salary → `income`).
+- Monthly-billed categories (rent, utilities, streaming, cloud_storage, debt_repayment, insurance) show 5–6 occurrences per user at a tight ~30-day interval (standard deviation 0.7–1.7 days across 300–1,150+ measured intervals per category).
+- However, per-user occurrence counts for several nominally-recurring categories (`education`, `healthcare`, `housing`, `shopping`) range from **1 to 6** — the dataset contains real users for whom a category that is recurring for most others has exactly **one** historical row.
+
+**Conclusion:** The *qualitative* signal (category/event_type tag, cross-checked against actual multi-occurrence history) is strongly derivable and should be the primary mechanism. The *exact minimum occurrence count* is not stated anywhere and is not derivable with certainty — but the dataset's own 1-occurrence boundary cases show the rule must be able to say "not recurring" even for an otherwise-recurring category.
+
+**Confidence:** Medium. Explicitly specified? No — the principle is explicit, the number is not. **Safest interpretation:** require ≥2 same-category occurrences at a broadly consistent interval before treating a (user, category) pair as recurring; a single historical occurrence is one-time, regardless of category label — consistent with the separate, explicit rule "Distinguish recurring expenses from one-time purchases... and unusual events." A threshold of 1 risks inventing an unsupported recurring commitment from a single row (forbidden by "do not invent unsupported... expenses"); a high threshold (e.g. ≥4) would wrongly discard genuinely recurring categories, since several categories naturally show only 5–6 total occurrences across a user's entire available history window.
+
+**Implementation consequence:** Recurrence detection should be a transparent rule (category/event_type tag + ≥2-occurrence-at-consistent-interval check per user), not an opaque statistical model; a single-occurrence category is forecast as a one-time event only, never projected forward.
+
+**Hidden-test risk:** Medium — most users have ≥5 occurrences in every truly recurring category, so the exact threshold (2 vs. 3) is unlikely to matter broadly, but the 1-occurrence boundary cases could visibly change `amount_safe_to_pay` for a handful of requests. **Marked UNRESOLVED — SAFE ASSUMPTION REQUIRED** for the precise minimum count; the ≥2 default above is the assumption, not a fact.
+
+---
+
+### Question 3 — Message-only new recurring facts vs. "history supports it"
+
+**Question:** How should a message-announced brand-new recurring expense with zero historical rows (e.g. a newly-introduced childcare payment) be reconciled with the "detect recurrence only when history supports it" rule?
+
+**Evidence:**
+- `problem_statement.md` (90-Day Safety Check) states the forecast uses **three independent, coordinate input classes**: "recurring income and expenses, confirmed future payments, and relevant messages or images" — messages are named as a forecast input in their own right, not as a subordinate source that must first be corroborated by history.
+- Five messages (`message_10`, `message_63`, `message_66`, `message_91`, `message_97`) each state, in an identical template: "A new recurring childcare payment begins in the same month. The updated pay and deductions will appear from the next cycle." None of the corresponding users has any historical `childcare`-category row in `financial_events.csv`.
+- Critically, **none of the five messages states an amount** for the new payment — the text explicitly defers the figure to a future payslip not present in the data ("will appear from the next cycle").
+
+**Conclusion:** A message-confirmed new recurring obligation must be incorporated into the 90-day forecast as a real future fact even with zero prior history — it is licensed by the "confirmed future payments... and relevant messages" clause, which is independent of the "history supports it" clause (the latter governs statistically-detected patterns, not evidence-confirmed ones). Its *amount*, however, cannot be invented: since no message actually states a childcare figure, no number may be fabricated for it (per "do not invent unsupported... financial information").
+
+**Confidence:** High for "messages are a first-class, history-independent forecast input" (explicitly stated in `problem_statement.md`). High for "an unstated amount must not be invented" (explicit prohibition, and directly evidenced by every located example omitting the figure). Medium for the exact operational handling of a confirmed-but-unquantified fact, since the spec doesn't prescribe a representation for that specific case.
+
+**Why competing interpretations are inferior:** Ignoring the message because "history doesn't support it" contradicts the explicit three-input list. Inventing a plausible childcare amount (e.g. a fraction of salary) directly violates the "do not invent" rule and is not supported by any figure in the message.
+
+**Implementation consequence:** The evidence-parsing layer must be able to add a *new* recurring line item to a user's forecast with no supporting historical rows, and must be able to represent "confirmed to exist, amount unknown" distinctly from both "no such expense" and "amount = 0" — a false zero would silently understate future outflows and risk an unsafe recommendation.
+
+**Hidden-test risk:** Medium — directly affects the 5 identified users/requests (and any hidden-set requests following the same message template); dropping the fact entirely risks an incorrectly optimistic `affordable_now`/`affordable_with_plan`, though the unresolved magnitude means the safety check cannot fully quantify the new obligation either way.
+
+---
+
+### Question 4 — Should `sample_requests.csv`'s users be processed for the production run?
+
+**Question:** Should `sample_requests.csv`'s 25 users/rows be loaded into the production run at all?
+
+**Evidence:**
+- `problem_statement.md`: "Only `dataset/requests.csv` requires predictions." (explicit)
+- `README.md` and `AGENTS.md` both describe `sample_requests.csv` as being for "format and decision style," and `AGENTS.md` §6.1 adds explicitly: "not as labels for evaluation requests."
+- Verified structurally: `sample_requests.csv`'s users are exactly `user_01`–`user_25`; `requests.csv`'s users are exactly `user_26`–`user_275` — a clean, total, zero-overlap partition of the 275 profiles.
+
+**Conclusion:** The 25 sample users' profiles, events, messages, images, and payment options may be excluded from the production run entirely. They exist solely as a development-time, held-out calibration set.
+
+**Confidence:** High — explicitly specified by the challenge, and corroborated by the disjoint ID ranges (there is no possible cross-reference need between the two sets).
+
+**Why the alternative is inferior:** Processing all 275 users "just in case" wastes compute (and, if any LLM calls are involved, tokens — which are separately scored) for zero benefit to `output.csv`'s correctness, and risks accidentally letting a sample-set artifact leak into a real prediction if the id-range separation isn't enforced.
+
+**Implementation consequence:** Filter all data loading to the user set actually referenced by `requests.csv`; keep `sample_requests.csv` wired up only as a self-check/regression harness during development.
+
+**Hidden-test risk:** None from excluding them (cannot affect `output.csv`). Retaining them as a calibration check remains valuable for development quality, just not as a production data source.
+
+---
+
+### Question 5 — Exact rounding rule for `partial_payment`'s two amounts
+
+**Question:** When `requested_amount` doesn't split evenly, what is the exact rounding rule for `partial_payment`'s two payments?
+
+**Evidence:**
+- The spec (`problem_statement.md`, `README.md`, `AGENTS.md`, all identically) only requires: "the two payments must add up to the complete `requested_amount`." No decimal-precision or rounding-method rule is stated.
+- Every monetary field in every dataset file uses **at most 2 decimal places**, with zero exceptions checked across `financial_events.amount` (25,342 rows), `requests.requested_amount` (250 rows), `sample_requests.amount_safe_to_pay` (25 rows), and `request_payment_options.payment_amount`/`total_payable_amount` (790 rows each).
+- The dataset's own multi-payment split (installments) is internally exact: `total_payable_amount = requested_amount + financing_fee` to the cent, and `payment_amount = round(total_payable_amount / number_of_payments, 2)` leaves **zero** rounding-remainder mismatches across all 515 installment rows (i.e. `payment_amount × number_of_payments` always equals `total_payable_amount` exactly).
+- The one worked `partial_payment` example (`request_19`: 28,820 + 10,840 = 39,660) uses whole numbers and does not exercise a fractional split.
+
+**Conclusion:** The "must add up exactly" requirement is best satisfied by construction, not by rounding rule: compute `amount_safe_to_pay` to the dataset's evident 2-decimal-place convention, then derive the second payment as `requested_amount − amount_safe_to_pay` by direct subtraction (inheriting the same precision) rather than rounding each leg independently. This guarantees exact equality by arithmetic necessity, regardless of the precision convention chosen.
+
+**Confidence:** High for "derive the second amount by subtraction, not independent rounding" — this is a logical consequence of the explicit "must add up" rule, not an assumption. Medium for "2 decimal places" — strongly evidenced by the dataset-wide convention but never stated as a rule, so **marked UNRESOLVED — SAFE ASSUMPTION REQUIRED** for the precision choice specifically (though the subtraction-based derivation makes the exact-sum requirement hold regardless of which precision is chosen).
+
+**Why competing interpretations are inferior:** Rounding both payments independently risks an off-by-a-cent sum that violates the explicit "must add up" rule; using more than 2 decimal places contradicts the observed dataset-wide convention.
+
+**Implementation consequence:** Partial-payment split logic must derive the second amount by subtraction.
+
+**Hidden-test risk:** Low-to-medium — only manifests if the capacity calculation itself produces `amount_safe_to_pay` at unusual precision; the subtraction-based derivation eliminates the risk by construction regardless.
+
+---
+
+### Question 6 — How to operationalize "forecast essential variable spending conservatively"
+
+**Question:** Should protected-but-variable spending categories (e.g. groceries, transport) be forecast using the historical average, historical maximum, or most recent observed value?
+
+**Evidence:**
+- `AGENTS.md` §6.3: "Forecast essential variable spending conservatively." This is the only textual source; no formula is given.
+- The "never falls below `minimum_balance_to_keep`" safety condition is restated three separate times across the spec (problem statement intro, the 90-Day Safety Check section, and `AGENTS.md`'s summary of it) — the design bias of the entire task leans toward avoiding false-"safe" outcomes.
+- Attempted reverse-engineering against `sample_requests.csv`: every inspected sample row with a comfortable balance cushion (e.g. `request_01`) would reach the same qualitative result under any of average/max/most-recent, so no example in the 25 solved samples isolates which statistic was actually used.
+
+**Conclusion:** **Not determinable from the dataset with the evidence available in this phase.** No sample row exercises a close-enough balance margin to distinguish the candidate statistics, and no spec file gives a formula.
+
+**Confidence:** Low (deliberately — this is the one question this phase could not resolve to high or even medium confidence). **Marked UNRESOLVED — SAFE ASSUMPTION REQUIRED.**
+
+**Safest interpretation, given the evidence that does exist:** forecast each future occurrence of a variable essential category at or above the user's own historical **maximum** for that category (or a high percentile, e.g. 90th, if the maximum proves too punitive once tested against the samples) — not the average or the single most-recent value.
+
+**Why competing interpretations are inferior:** An average understates roughly half of future months by construction, directly risking a plan the hidden evaluator would judge unsafe. The single most-recent observation is noisy — it could be an unusually low outlier (same understatement risk) or an unusually high one (needlessly rejecting an affordable request) — neither is "conservative" in a principled sense, just arbitrary.
+
+**Implementation consequence:** Phase 2 needs an explicit, documented choice of statistic here, and that choice must be backtested against `sample_requests.csv`'s known outputs before being trusted on `requests.csv` — this is not a detail to leave implicit in code.
+
+**Hidden-test risk:** **High.** This is the most consequential of the six unresolved questions: it directly shapes `amount_safe_to_pay` and `earliest_date_for_full_payment` for every request touching a protected variable-spending category (groceries alone is protected for most profiles per Section C's `expense_categories_to_protect` tally), i.e. a large share of the 250-request evaluation set.
+
+---
+
+## J. Phase 2 Design Constraints
+
+Constraints Phase 2 must obey, derived from Section I. This is a constraint list only — no implementation design.
+
+1. Load and predict for only the users/requests present in `requests.csv`; `sample_requests.csv` and its 25 users are a calibration/regression fixture, never a production data source (Q4).
+2. Recurrence detection must be a transparent rule over `event_type`/`category` plus a per-(user, category) occurrence check, with a minimum of 2 same-category occurrences at a broadly consistent interval required before extrapolating a pattern forward; a single historical occurrence must be forecast as one-time only (Q2 — assumption, not fact).
+3. The 90-day forecast must treat "recurring income/expenses," "confirmed future payments," and "messages/images" as three independent, all-required input classes; a message may introduce a wholly new recurring or one-time obligation that has no supporting historical rows (Q3).
+4. When a message/image confirms that a financial fact exists but does not state its amount, that fact must be represented as confirmed-but-unquantified — never defaulted to zero and never assigned an invented figure (Q3).
+5. Any `reduce_to:<event_id>:<new_amount>` action must enforce `new_amount ≥ minimum_allowed_amount` for that event, and should default to that floor exactly when a reduction is used, subject to the ranking preference for plans that need no spending change at all (Q1).
+6. `stop`/`reduce_to` targets must additionally respect each event's own `flexibility` value and the specific user's protected/willing-to-reduce/willing-to-stop category lists (carried over from Phase 1 Section D.13, reinforced by Q1's evidence).
+7. `partial_payment`'s second payment must be derived as `requested_amount − amount_safe_to_pay` by direct subtraction, never by independently rounding both legs (Q5).
+8. All computed monetary output values should use at most 2 decimal places, matching the dataset-wide convention observed in every input file (Q5 — assumption, not an explicit rule).
+9. Event lifecycle resolution (via `linked_event_id` and `status`) must run before recurrence detection and before the 90-day simulation, so cancelled/failed/duplicate/unrealized/pending-credit legs never enter either step (carried over from Phase 1, interacts directly with Q2's occurrence counting).
+10. Essential/protected variable-spending categories must be forecast using an explicit, documented, conservative (upper-bound-leaning) statistic — not a plain average or last-observed value — and that choice must be validated against `sample_requests.csv`'s known outputs before being applied to `requests.csv` (Q6 — UNRESOLVED, highest hidden-test risk of the six; treat the chosen statistic as a flagged assumption in any Phase 2 documentation, not as settled fact).
