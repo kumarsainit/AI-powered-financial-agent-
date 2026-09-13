@@ -58,6 +58,35 @@ def cadence_step_days(candidate: RecurringEventCandidate) -> int | None:
     return None
 
 
+def _staleness_applies(direction: Direction, scope: str) -> bool:
+    if scope == "all":
+        return True
+    if scope == "income":
+        return direction is Direction.CREDIT
+    if scope == "expense":
+        return direction is Direction.DEBIT
+    return False
+
+
+def is_stale(
+    candidate: RecurringEventCandidate,
+    window: ForecastWindow,
+    max_staleness_multiple: float,
+) -> bool:
+    if not candidate.observed_dates:
+        return True
+    last_observed = candidate.observed_dates[-1]
+    if last_observed >= window.start_date:
+        return False
+    if candidate.inferred_cadence is Cadence.MONTHLY:
+        step = 30
+    else:
+        step = cadence_step_days(candidate) or 0
+    if step <= 0:
+        return False
+    return (window.start_date - last_observed).days > max_staleness_multiple * step
+
+
 def projected_dates(candidate: RecurringEventCandidate, window: ForecastWindow) -> tuple[date, ...]:
     if not candidate.observed_dates:
         return ()
@@ -156,6 +185,10 @@ def project_recurrence(
             continue
         (direction,) = directions
         if direction is Direction.NON_CASH:
+            continue
+        if _staleness_applies(direction, config.staleness_scope) and is_stale(
+            candidate, window, config.max_staleness_multiple
+        ):
             continue
 
         amounts = [event.amount for event in source_events if event.amount is not None]

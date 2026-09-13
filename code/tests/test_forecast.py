@@ -205,13 +205,15 @@ def fact(
 
 
 def monthly_series(prefix: str, category: str, amounts: list[str], **kwargs) -> tuple[FinancialEvent, ...]:
-    start = date(2025, 2, 5)
+    count = len(amounts)
+    last = date(2025, 7, 5)
     events = []
     for index, amount in enumerate(amounts):
-        month = start.month + index
-        year = start.year + (month - 1) // 12
+        months_back = count - 1 - index
+        month = last.month - months_back
+        year = last.year + (month - 1) // 12
         month = (month - 1) % 12 + 1
-        events.append(event(f"{prefix}_{index}", date(year, month, start.day), amount, category=category, **kwargs))
+        events.append(event(f"{prefix}_{index}", date(year, month, last.day), amount, category=category, **kwargs))
     return tuple(events)
 
 
@@ -400,7 +402,7 @@ def test_biweekly_recurrence_projects_every_fourteen_days():
 def test_irregular_but_consistent_cadence_uses_mean_interval():
     days = [0, 10, 20, 30, 40]
     events = tuple(
-        event(f"i{i}", date(2025, 6, 1) + timedelta(days=d), "30", category="dining") for i, d in enumerate(days)
+        event(f"i{i}", date(2025, 6, 12) + timedelta(days=d), "30", category="dining") for i, d in enumerate(days)
     )
     forecast = build_financial_state(bundle(events))
     dining = sorted(e.when for e in forecast.events if e.category == "dining")
@@ -759,3 +761,48 @@ def test_forecast_window_contains_is_inclusive():
     assert window.contains(REQUEST_DATE)
     assert window.contains(window.end_date)
     assert not window.contains(window.end_date + timedelta(days=1))
+
+
+def test_lapsed_recurring_expense_is_not_resurrected():
+    lapsed = tuple(
+        event(f"old{i}", date(2025, 2, 5 + 0) if i == 0 else date(2025, 2 + i, 5), "200", category="gym")
+        for i in range(3)
+    )
+    forecast = build_financial_state(bundle(lapsed))
+    assert not [e for e in forecast.events if e.category == "gym"]
+
+
+def test_current_recurring_expense_is_still_projected():
+    current = monthly_series("g", "gym", ["200", "200", "200"])
+    forecast = build_financial_state(bundle(current))
+    assert [e for e in forecast.events if e.category == "gym"]
+
+
+def test_staleness_rule_is_configurable_and_expense_scoped():
+    lapsed_expense = tuple(
+        event(f"old{i}", date(2025, 2 + i, 5), "200", category="gym") for i in range(3)
+    )
+    lapsed_income = tuple(
+        event(
+            f"inc{i}",
+            date(2025, 2 + i, 15),
+            "900",
+            event_type=EventType.INCOME,
+            direction=Direction.CREDIT,
+            category="salary",
+        )
+        for i in range(3)
+    )
+    forecast = build_financial_state(bundle(lapsed_expense + lapsed_income))
+    assert not [e for e in forecast.events if e.category == "gym"]
+    assert [e for e in forecast.events if e.category == "salary"]
+
+    permissive = build_financial_state(
+        bundle(lapsed_expense + lapsed_income), config=ForecastConfig(staleness_scope="none")
+    )
+    assert [e for e in permissive.events if e.category == "gym"]
+
+    strict = build_financial_state(
+        bundle(lapsed_expense + lapsed_income), config=ForecastConfig(staleness_scope="all")
+    )
+    assert not [e for e in strict.events if e.category == "salary"]

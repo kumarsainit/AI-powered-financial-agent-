@@ -296,13 +296,14 @@ def test_reducible_expense_is_never_reduced_below_its_minimum():
     )
     _b, _f, _s, rec = scenario(
         events=streaming,
-        balance="6600",
+        balance="7000",
         minimum="1000",
         requested="5000",
         options=(FULL_TODAY,),
         reduce=("streaming",),
         stop=(),
     )
+    assert rec.spending_changes
     for change in rec.spending_changes:
         assert change.action is ChangeAction.REDUCE_TO
         assert change.new_amount == Decimal("300")

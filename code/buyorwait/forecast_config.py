@@ -19,3 +19,5 @@ class ForecastConfig:
     project_weak_income: bool = True
     fixed_amount_tolerance: float = 0.01
     minimum_history_days: int = 0
+    max_staleness_multiple: float = 1.0
+    staleness_scope: str = "expense"

@@ -17,7 +17,8 @@ from buyorwait.currency import ExchangeRateTable
 from buyorwait.evidence_pipeline import build_evidence_bundle
 from buyorwait.forecast import build_financial_state
 from buyorwait.ingestion import Dataset
-from buyorwait.planning import build_recommendation
+from buyorwait.output_record import assemble_output_record
+from buyorwait.planning import build_recommendation, normalize_request
 from buyorwait.usage import UsageTracker
 
 DATASET_DIR = Path(__file__).parent.parent.parent / "dataset"
@@ -81,55 +82,58 @@ def load_sample_dataset(dataset_dir: Path) -> Dataset:
     )
 
 
+FIELDS = (
+    "amount_safe_to_pay",
+    "affordability_status",
+    "recommended_payment_method",
+    "payment_plan",
+    "earliest_date_for_full_payment",
+    "spending_changes_needed",
+)
+
+
 def main() -> int:
     truth = {r["request_id"]: r for r in csv.DictReader(open(DATASET_DIR / "sample_requests.csv"))}
     dataset = load_sample_dataset(DATASET_DIR)
     tracker = UsageTracker()
 
-    status_match = 0
-    method_match = 0
-    earliest_match = 0
+    matches = {field: 0 for field in FIELDS}
     rows = []
     for request_id in sorted(truth, key=lambda r: int(r.split("_")[1])):
         bundle = build_request_bundle(dataset, request_id)
         forecast = build_financial_state(bundle, build_evidence_bundle(bundle, tracker))
-        recommendation = build_recommendation(bundle, forecast)
+        spec = normalize_request(bundle, forecast)
+        recommendation = build_recommendation(bundle, forecast, spec=spec)
+        record = assemble_output_record(recommendation, spec)
 
         expected = truth[request_id]
-        got_status = recommendation.affordability_status.value
-        got_method = recommendation.recommended_payment_method.value
-        got_earliest = (
-            recommendation.earliest_date_for_full_payment.isoformat()
-            if recommendation.earliest_date_for_full_payment
-            else ""
-        )
-        status_match += got_status == expected["affordability_status"]
-        method_match += got_method == expected["recommended_payment_method"]
-        earliest_match += got_earliest == expected["earliest_date_for_full_payment"]
-        rows.append(
-            (
-                request_id,
-                expected["affordability_status"],
-                got_status,
-                expected["recommended_payment_method"],
-                got_method,
-                expected["amount_safe_to_pay"],
-                str(recommendation.amount_safe_to_pay),
-                expected["earliest_date_for_full_payment"],
-                got_earliest,
-            )
-        )
+        produced = {
+            "amount_safe_to_pay": record.amount_safe_to_pay,
+            "affordability_status": record.affordability_status,
+            "recommended_payment_method": record.recommended_payment_method,
+            "payment_plan": record.payment_plan,
+            "earliest_date_for_full_payment": record.earliest_date_for_full_payment,
+            "spending_changes_needed": record.spending_changes_needed,
+        }
+        for field in FIELDS:
+            if produced[field] == expected[field]:
+                matches[field] += 1
+        rows.append((request_id, expected, produced, record.decision_explanation))
 
     total = len(rows)
     print(f"sample requests: {total}")
-    print(f"affordability_status match: {status_match}/{total}")
-    print(f"recommended_payment_method match: {method_match}/{total}")
-    print(f"earliest_date_for_full_payment match: {earliest_match}/{total}")
+    for field in FIELDS:
+        print(f"{field}: {matches[field]}/{total}")
     print()
-    print("request | truth_status | got_status | truth_method | got_method | truth_safe | got_safe | truth_date | got_date")
-    for row in rows:
-        flag = "" if row[1] == row[2] and row[3] == row[4] else "  <-- differs"
-        print(" | ".join(row) + flag)
+    for request_id, expected, produced, explanation in rows:
+        differing = [f for f in FIELDS if produced[f] != expected[f]]
+        marker = "OK  " if not differing else "DIFF"
+        print(f"{marker} {request_id} status {expected['affordability_status']} -> {produced['affordability_status']}")
+        for field in differing:
+            print(f"      {field}: truth={expected[field]!r} got={produced[field]!r}")
+        if not differing:
+            print(f"      truth expl: {expected['decision_explanation']}")
+            print(f"      our   expl: {explanation}")
     return 0
 
 

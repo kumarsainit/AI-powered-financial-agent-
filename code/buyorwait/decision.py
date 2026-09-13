@@ -60,6 +60,7 @@ class SpendingChange:
     action: ChangeAction
     event_id: str
     category: str
+    description: str
     current_amount: Decimal
     new_amount: Decimal
     minimum_allowed_amount: Decimal | None

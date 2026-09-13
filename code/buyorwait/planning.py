@@ -333,10 +333,12 @@ def build_spending_change_options(
         if action is None:
             continue
 
+        source_event = next((e for e in bundle.events if e.event_id == candidate.event_id), None)
         change = SpendingChange(
             action=action,
             event_id=candidate.event_id,
             category=candidate.category,
+            description=source_event.description if source_event is not None else candidate.category,
             current_amount=candidate.current_amount,
             new_amount=new_amount,
             minimum_allowed_amount=candidate.minimum_allowed_amount,

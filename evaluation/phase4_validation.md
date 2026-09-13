@@ -379,3 +379,17 @@ Phase 5 ran the completed decision engine against the 25 public `sample_requests
 2. **Essential variable spending is forecast at `median`, not `percentile_75`.** The cumulative backtest favoured `percentile_75` for its lower under-estimation rate, but end-to-end against the labelled samples `median` scored better on every axis (status 17/25 vs 16/25, method 19/25 vs 18/25, dates 14/25 vs 12/25). Labelled outcomes outrank a proxy metric, so `median` is the production default; `percentile_75` remains one config value away.
 
 Restated Phase 4 figures under the corrected semantics: minimum projected balance median 55,499.30 (was 53,226.09 under intraday lows), safety margin median 14,848.08, and requests whose baseline forecast breaches the minimum balance **7** (was 10). Requests processed 250/250, errors 0, repeatability mismatches 0, invariants all passing. Every other figure in this document is unchanged.
+
+---
+
+## 16. Phase 6 Amendment — Lapsed Recurring Expenses
+
+Phase 6's sample calibration surfaced a third genuine defect: `projected_dates` steps forward from a series' last observation until it reaches the window, which silently **resurrects recurring expenses that have already stopped**. A monthly subscription last charged four months before `request_date` was still projected three more times inside the forecast.
+
+The correction is a general staleness rule in `projection.project_recurrence`: a series is not projected when its last observation predates `request_date` by more than `max_staleness_multiple` (default **1.0**) times its own cadence — i.e. it has already missed a full cycle. `ForecastConfig.staleness_scope` (default **`"expense"`**) controls which directions the rule applies to; `"all"`, `"income"` and `"none"` are the other settings.
+
+Scope and threshold were chosen by measurement, not preference. Against the 25 solved samples, end-to-end field agreement (status + method + plan + date + safe amount + spending changes, 150 comparisons) scored: no staleness rule 93, expense-scoped at 1.0 **96**, expense-scoped at 1.25/1.5 93, income-scoped at any threshold 90. Applying the rule to income was measurably harmful and is therefore off by default; dropping a lapsed charge is a factual inference about a stopped subscription, whereas dropping lapsed income would only be a guess. Regression tests cover a lapsed series, a current series, and all three scope settings.
+
+Restated Phase 4 figures: projected events 11,933 (9,686 recurring, 2,108 variable baseline, 139 confirmed), minimum projected balance median 55,499.30, and **7** requests whose baseline forecast breaches the minimum balance. Requests processed 250/250, errors 0, repeatability mismatches 0, all invariants passing.
+
+A fourth candidate correction was tested and **rejected**: decomposing composite `(user, category)` series into monthly day-of-month sub-streams. It is theoretically attractive (several users receive two monthly pay streams in one category) but scored worse on every sample axis, so it was removed rather than kept behind a flag.
