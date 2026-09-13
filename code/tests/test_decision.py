@@ -538,7 +538,7 @@ def test_candidate_ordering_is_deterministic():
     assert first.amount_safe_to_pay == second.amount_safe_to_pay
 
 
-def test_every_candidate_is_validated_through_the_phase_four_simulator():
+def test_every_candidate_is_validated_through_the_financial_simulator():
     installments = option("payment_option_02", PaymentMethod.INSTALLMENTS, "1020", 5, REQUEST_DATE, 10, "100", "5100")
     _b, forecast, spec, rec = scenario(
         options=(FULL_TODAY, installments),
