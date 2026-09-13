@@ -40,6 +40,7 @@ class RejectionReason(Enum):
     PAYMENT_METHOD_NOT_PREFERRED = "payment_method_not_preferred"
     INSTALLMENT_TERM_TOO_LONG = "installment_term_too_long"
     INSTALLMENT_UNSAFE = "installment_unsafe"
+    INSTALLMENT_TOTAL_BELOW_REQUEST = "installment_total_below_request"
     PARTIAL_PAYMENT_NOT_ALLOWED = "partial_payment_not_allowed"
     PARTIAL_PAYMENT_AMOUNT_INVALID = "partial_payment_amount_invalid"
     COMPLETION_AFTER_DEADLINE = "completion_after_deadline"

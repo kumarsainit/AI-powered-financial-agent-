@@ -75,8 +75,23 @@ def _build_chain(component: set[str], by_id: dict[str, FinancialEvent]) -> Lifec
             ),
         )
 
+    dispositions = {event_id: MemberDisposition.INCLUDE for event_id in component}
+    for event_id in sorted(component):
+        event = by_id[event_id]
+        target_id = event.linked_event_id
+        if target_id is None or target_id not in component:
+            continue
+        target = by_id[target_id]
+        key = (event.event_type, event.status, target.event_type, target.status)
+        pattern = _PATTERN_TABLE.get(key, LifecyclePattern.UNCLASSIFIED_LINK)
+        source_disposition, target_disposition = _PATTERN_DISPOSITIONS[pattern]
+        if source_disposition is not MemberDisposition.INCLUDE:
+            dispositions[event_id] = source_disposition
+        if target_disposition is not MemberDisposition.INCLUDE:
+            dispositions[target_id] = target_disposition
+
     members = tuple(
-        LifecycleMember(event_id, "component", MemberDisposition.INCLUDE) for event_id in sorted(component)
+        LifecycleMember(event_id, "component", dispositions[event_id]) for event_id in sorted(component)
     )
     return LifecycleChain(
         chain_id="|".join(sorted(component)),

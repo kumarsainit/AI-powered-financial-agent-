@@ -220,7 +220,7 @@ def load_dataset(dataset_dir: str | Path) -> Dataset:
     for event in events.values():
         events_by_user[event.user_id].append(event)
     events_by_user_sorted = {
-        user_id: tuple(sorted(items, key=lambda e: e.event_date)) for user_id, items in events_by_user.items()
+        user_id: tuple(sorted(items, key=lambda e: (e.event_date, e.event_id))) for user_id, items in events_by_user.items()
     }
 
     payment_options_by_request: dict[str, list[PaymentOption]] = defaultdict(list)

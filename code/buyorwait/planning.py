@@ -113,12 +113,12 @@ def apply_spending_changes(
         if event.original_amount == 0:
             adjusted.append(event)
             continue
-        ratio = match.new_amount / match.current_amount
+        conversion_ratio = event.amount_home / event.original_amount
         adjusted.append(
             replace(
                 event,
-                original_amount=(event.original_amount * ratio).quantize(CENT),
-                amount_home=(event.amount_home * ratio).quantize(CENT),
+                original_amount=match.new_amount,
+                amount_home=(match.new_amount * conversion_ratio).quantize(CENT),
                 description=f"{event.description} (reduced to {match.new_amount})",
             )
         )
@@ -469,6 +469,13 @@ def evaluate_candidate(
 
     if not candidate.completes_request and len(candidate.payments) > 1:
         reasons.append(RejectionReason.COMPLETION_AFTER_DEADLINE)
+
+    if (
+        candidate.kind is CandidateKind.INSTALLMENTS
+        and spec.requested_amount_home is not None
+        and candidate.total_paid < spec.requested_amount_home
+    ):
+        reasons.append(RejectionReason.INSTALLMENT_TOTAL_BELOW_REQUEST)
 
     if spec.requested_amount_home is None:
         reasons.append(RejectionReason.UNRESOLVED_CURRENCY_CONVERSION)

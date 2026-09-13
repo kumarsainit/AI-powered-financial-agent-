@@ -25,7 +25,7 @@ def compute_spending_observations(
 
     observations: list[HistoricalSpendingObservation] = []
     for (user_id, category), group in groups.items():
-        ordered = sorted(group, key=lambda e: e.event_date)
+        ordered = sorted(group, key=lambda e: (e.event_date, e.event_id))
         dates = [e.event_date for e in ordered]
         amounts = [e.amount for e in ordered]
         count = len(ordered)

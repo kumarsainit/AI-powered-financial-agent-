@@ -68,6 +68,19 @@ def _staleness_applies(direction: Direction, scope: str) -> bool:
     return False
 
 
+def elapsed_cycles(candidate: RecurringEventCandidate, reference: date) -> float | None:
+    last_observed = candidate.observed_dates[-1]
+    if candidate.inferred_cadence is Cadence.MONTHLY:
+        months = (reference.year - last_observed.year) * 12 + (reference.month - last_observed.month)
+        if reference.day < last_observed.day:
+            months -= 1
+        return float(months)
+    step = cadence_step_days(candidate)
+    if not step:
+        return None
+    return (reference - last_observed).days / step
+
+
 def is_stale(
     candidate: RecurringEventCandidate,
     window: ForecastWindow,
@@ -75,16 +88,12 @@ def is_stale(
 ) -> bool:
     if not candidate.observed_dates:
         return True
-    last_observed = candidate.observed_dates[-1]
-    if last_observed >= window.start_date:
+    if candidate.observed_dates[-1] >= window.start_date:
         return False
-    if candidate.inferred_cadence is Cadence.MONTHLY:
-        step = 30
-    else:
-        step = cadence_step_days(candidate) or 0
-    if step <= 0:
+    cycles = elapsed_cycles(candidate, window.start_date)
+    if cycles is None:
         return False
-    return (window.start_date - last_observed).days > max_staleness_multiple * step
+    return cycles > max_staleness_multiple
 
 
 def projected_dates(candidate: RecurringEventCandidate, window: ForecastWindow) -> tuple[date, ...]:

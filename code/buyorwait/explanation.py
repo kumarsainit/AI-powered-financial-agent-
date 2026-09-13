@@ -76,29 +76,28 @@ def _affordable_with_plan(recommendation: Recommendation, spec: PurchaseSpec) ->
     if selected is None:
         raise ExplanationError(f"{recommendation.request_id}: a plan status requires a selected candidate")
     payments = selected.candidate.payments
+    changes = _change_phrase(recommendation, currency)
 
     if recommendation.recommended_payment_method is RecommendedMethod.INSTALLMENTS:
         instalment = format_money_words(payments[0][1], currency)
         start = format_long_date(payments[0][0])
-        return (
-            f"Use {len(payments)} installments of {instalment}, starting {start}."
-            f" This leaves at least {minimum} available."
-        )
-
-    if recommendation.recommended_payment_method is RecommendedMethod.PARTIAL_PAYMENT:
+        core = f"use {len(payments)} installments of {instalment}, starting {start}"
+    elif recommendation.recommended_payment_method is RecommendedMethod.PARTIAL_PAYMENT:
         first = format_money_words(payments[0][1], currency)
         second = format_money_words(payments[1][1], currency)
         when = format_long_date(payments[1][0])
-        return (
-            f"Pay {first} today and the remaining {second} on {when}."
-            f" This completes the full request and keeps the {minimum} minimum protected."
-        )
+        core = f"pay {first} today and the remaining {second} on {when}"
+    else:
+        core = f"pay {format_money_words(spec.requested_amount_home, currency)} today"
 
-    changes = _change_phrase(recommendation, currency)
-    amount = format_money_words(spec.requested_amount_home, currency)
     if changes:
-        return f"{changes}, then pay {amount} today. This leaves at least {minimum} available."
-    return f"Pay {amount} today. This leaves at least {minimum} available."
+        sentence = f"{changes}, then {core}."
+    else:
+        sentence = core[0].upper() + core[1:] + "."
+
+    if recommendation.recommended_payment_method is RecommendedMethod.PARTIAL_PAYMENT:
+        return f"{sentence} This completes the full request and keeps the {minimum} minimum protected."
+    return f"{sentence} This leaves at least {minimum} available."
 
 
 def _affordable_later(recommendation: Recommendation, spec: PurchaseSpec) -> str:

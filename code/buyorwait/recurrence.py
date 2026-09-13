@@ -41,7 +41,7 @@ def detect_recurrence(
 
     candidates: list[RecurringEventCandidate] = []
     for (user_id, category), group in groups.items():
-        ordered = sorted(group, key=lambda e: e.event_date)
+        ordered = sorted(group, key=lambda e: (e.event_date, e.event_id))
         dates = tuple(e.event_date for e in ordered)
         amounts = tuple(e.amount for e in ordered if e.amount is not None)
         source_event_ids = tuple(e.event_id for e in ordered)
