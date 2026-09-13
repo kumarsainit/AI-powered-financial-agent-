@@ -31,19 +31,18 @@ def simulate(
     window: ForecastWindow,
     minimum_balance: Decimal,
 ) -> tuple[DailyFinancialState, ...]:
+    eligible_events = (
+        event for event in events if event.amount_home is not None and window.contains(event.when)
+    )
     by_day: dict = defaultdict(list)
-    for event in events:
-        if event.amount_home is None:
-            continue
-        if not window.contains(event.when):
-            continue
+    for event in sorted(eligible_events, key=ordering_key):
         by_day[event.when].append(event)
 
     balance = opening_balance
     states: list[DailyFinancialState] = []
     for day_index in range(window.horizon_days + 1):
         current = window.start_date + timedelta(days=day_index)
-        day_events = sorted(by_day.get(current, ()), key=ordering_key)
+        day_events = by_day.get(current, ())
         opening = balance
         low = balance
         income = Decimal("0")
